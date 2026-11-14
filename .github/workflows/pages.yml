@@ -34,9 +34,9 @@ jobs:
           curl -fsSL -A "$UA" -o germany.poly https://download.geofabrik.de/europe/germany.poly
           ls -lh germany.osm.pbf
 
-      - name: Automaten herausfiltern
+      - name: Automaten und Geldautomaten herausfiltern
         run: |
-          osmium tags-filter germany.osm.pbf nwr/amenity=vending_machine -o vending.osm.pbf
+          osmium tags-filter germany.osm.pbf nwr/amenity=vending_machine,atm,bank -o vending.osm.pbf
           osmium export vending.osm.pbf -f geojsonseq -a type,id \
             --geometry-types=point,linestring,polygon -o vending.geojsonseq
 
@@ -45,6 +45,7 @@ jobs:
           mkdir -p _site
           cp *.html style.css icon.png _site/
           python3 tools/build_tiles.py vending.geojsonseq germany.poly _site/data/v1
+          python3 tools/build_tiles.py vending.geojsonseq germany.poly _site/data/v2 --with-atm
           du -sh _site/data
 
       - uses: actions/upload-pages-artifact@v3

@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Zerlegt alle Automaten (amenity=vending_machine) aus einem OSM-Export in kleine Kacheln.
 
-Aufruf: build_tiles.py <vending.geojsonseq> <gebiet.poly> <ausgabeordner>
+Aufruf: build_tiles.py <vending.geojsonseq> <gebiet.poly> <ausgabeordner> [--with-atm]
+
+- Ohne --with-atm: nur Automaten (Datenstand v1, für App-Version 1.0).
+- Mit --with-atm: zusätzlich Geldautomaten (amenity=atm, Banken mit atm=yes) samt amenity-Tag (v2).
 
 - Eingabe: `osmium export … -f geojsonseq -a type,id` (Punkte, Linien, Flächen)
 - Kacheln: 0,1° × 0,1° (ca. 11 × 7 km), Datei <ausgabe>/<floor(lat*10)>/<floor(lon*10)>.json
@@ -22,6 +25,16 @@ KEEP_TAGS = {
     "name", "brand", "operator", "vending", "opening_hours", "description", "note",
     "addr:street", "addr:housenumber", "addr:city", "location", "indoor", "level", "access",
 }
+ATM_TAGS = {"amenity", "atm", "network", "cash_in", "fee"}
+
+
+def is_wanted(props, with_atm):
+    amenity = props.get("amenity")
+    if amenity == "vending_machine":
+        return True
+    if not with_atm:
+        return False
+    return amenity == "atm" or (amenity == "bank" and props.get("atm") == "yes")
 
 
 def tile_key(lat, lon):
@@ -102,6 +115,8 @@ def covered_tiles(rings):
 
 def main():
     src, poly, out = sys.argv[1:4]
+    with_atm = "--with-atm" in sys.argv[4:]
+    keep = KEEP_TAGS | ATM_TAGS if with_atm else KEEP_TAGS
     tiles = {}
     seen = set()
     count = 0
@@ -112,7 +127,7 @@ def main():
                 continue
             feature = json.loads(line)
             props = feature.get("properties") or {}
-            if props.get("amenity") != "vending_machine":
+            if not is_wanted(props, with_atm):
                 continue  # z. B. mitexportierte Knoten von Flächen
             osm_id = f'{props.get("@type", "node")}/{props.get("@id")}'
             if osm_id in seen:
@@ -122,7 +137,7 @@ def main():
                 continue
             seen.add(osm_id)
             tags = {k: v for k, v in props.items()
-                    if k in KEEP_TAGS or (k.startswith("payment:") and v == "yes")}
+                    if k in keep or (k.startswith("payment:") and v == "yes")}
             lat, lon = point
             tiles.setdefault(tile_key(lat, lon), []).append([osm_id, round(lat, 6), round(lon, 6), tags])
             count += 1
